@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Zen Link Pro - Mahmoud Dev Edition</title>
+    <style>
+        :root {
+            --bg: #0f172a; --card: #1e293b; --text: #f8fafc;
+            --accent: #38bdf8; --dot-1: #fb7185; --dot-2: #60a5fa;
+            --dot-3: #34d399; --dot-4: #fbbf24;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; user-select: none; }
+        body {
+            background: var(--bg); height: 100vh; display: flex;
+            justify-content: center; align-items: center;
+            font-family: 'Segoe UI', system-ui, sans-serif; color: var(--text); overflow: hidden;
+        }
+        #app {
+            width: 100%; max-width: 420px; height: 100%; max-height: 750px;
+            background: var(--card); position: relative; display: flex;
+            flex-direction: column; border-radius: 35px; border: 1px solid #334155;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+        }
+        header { padding: 30px 25px 10px; display: flex; justify-content: space-between; align-items: center; }
+        .score-box { display: flex; flex-direction: column; }
+        .label { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: #94a3b8; }
+        .val { font-size: 32px; font-weight: 800; color: var(--accent); }
+        #goal-box { font-size: 12px; background: rgba(56,189,248,0.1); padding: 5px 12px; border-radius: 10px; color: var(--accent); margin-top: 5px; }
+        #mahmoud-brand { position: absolute; bottom: 15px; width: 100%; text-align: center; font-size: 12px; color: #475569; letter-spacing: 1px; }
+        #canvas-holder { flex: 1; margin: 15px 20px 40px; border-radius: 25px; background: rgba(15,23,42,0.4); position: relative; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; }
+        .overlay {
+            position: absolute; inset: 0; background: var(--bg); z-index: 100;
+            display: flex; flex-direction: column; justify-content: center;
+            align-items: center; text-align: center; padding: 40px; border-radius: 35px;
+        }
+        .tutorial-img { width: 60px; height: 60px; border: 2px dashed var(--accent); border-radius: 15px; margin-bottom: 15px; display: flex; justify-content: center; align-items: center; font-size: 24px; }
+        .btn {
+            background: var(--accent); color: white; border: none; padding: 18px 45px;
+            border-radius: 50px; font-size: 18px; font-weight: 700; cursor: pointer;
+            box-shadow: 0 10px 20px rgba(56,189,248,0.3); transition: 0.3s;
+        }
+        .btn:hover { transform: scale(1.05); }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <header>
+        <div class="score-box">
+            <div class="label">Score</div>
+            <div id="scoreValue" class="val">0</div>
+            <div id="goal-box">GOAL: 600</div>
+        </div>
+        <div style="text-align: right">
+            <div id="lvl-tag" style="font-weight: 800; color: #64748b">LEVEL 01</div>
+            <div style="font-size: 9px; color: #475569; margin-top:4px">MAHMOUD DEV PRO</div>
+        </div>
+    </header>
+
+    <div id="canvas-holder">
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div id="mahmoud-brand">PREMIUM EDITION BY MAHMOUD DEV</div>
+
+    <div id="screen-start" class="overlay">
+        <h1 style="font-size: 40px; margin-bottom: 5px">Zen Link</h1>
+        <p style="color: var(--accent); font-weight: bold; margin-bottom: 25px">by Mahmoud Dev</p>
+        <div class="tutorial-img">🔗</div>
+        <p style="font-size: 14px; margin-bottom: 30px; opacity: 0.8">
+            HOW TO PLAY:<br>
+            Connect 3+ dots of the same color<br>
+            horizontally, vertically or diagonally.<br>
+            Reach the goal to level up!
+        </p>
+        <button class="btn" onclick="Game.init()">PLAY NOW</button>
+    </div>
+
+    <div id="screen-win" class="overlay" style="display: none">
+        <h1 style="color: var(--dot-3)">Level Clear!</h1>
+        <p id="win-msg">You reached the goal.</p>
+        <button class="btn" onclick="Game.nextLevel()">NEXT MISSION</button>
+    </div>
+</div>
+
+<script>
+const AudioFX = {
+    ctx: null,
+    init() { if(!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); },
+    pop() {
+        this.init(); if(this.ctx.state === 'suspended') this.ctx.resume();
+        const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+        o.type = 'sine'; o.frequency.setValueAtTime(450 + (Math.random()*100), this.ctx.currentTime);
+        o.frequency.exponentialRampToValueAtTime(10, this.ctx.currentTime + 0.1);
+        g.gain.setValueAtTime(0.1, this.ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+        o.connect(g); g.connect(this.ctx.destination);
+        o.start(); o.stop(this.ctx.currentTime + 0.1);
+    }
+};
+
+const Game = {
+    dots: [], path: [], particles: [], score: 0, level: 1,
+    colors: ['#fb7185', '#60a5fa', '#34d399', '#fbbf24'],
+    rows: 7, cols: 6,
+
+    init() {
+        AudioFX.init();
+        document.getElementById('screen-start').style.display = 'none';
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.resize(); this.generate(); this.listen(); this.loop();
+    },
+
+    resize() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = this.canvas.parentNode.getBoundingClientRect();
+        this.canvas.width = rect.width * dpr; this.canvas.height = rect.height * dpr;
+        this.ctx.scale(dpr, dpr); this.width = rect.width; this.height = rect.height;
+    },
+
+    generate() {
+        this.dots = [];
+        for(let r=0; r<this.rows; r++) {
+            for(let c=0; c<this.cols; c++) this.spawn(r, c, true);
+        }
+    },
+
+    spawn(r, c, init=false) {
+        this.dots.push({
+            r, c, color: this.colors[Math.floor(Math.random()*this.colors.length)],
+            x: c * (this.width/this.cols) + (this.width/this.cols/2),
+            y: init ? -100 : -200, pulse: Math.random()*5
+        });
+    },
+
+    listen() {
+        const getXY = e => {
+            const r = this.canvas.getBoundingClientRect();
+            return { x: (e.touches ? e.touches[0].clientX : e.clientX) - r.left, y: (e.touches ? e.touches[0].clientY : e.clientY) - r.top };
+        };
+        const touch = e => {
+            if(!this.isDown) return;
+            const p = getXY(e);
+            this.dots.forEach(d => { if(Math.hypot(d.x-p.x, d.y-p.y) < 25) this.addToPath(d); });
+        };
+        this.canvas.addEventListener('pointerdown', e => { this.isDown = true; touch(e); });
+        window.addEventListener('pointermove', touch);
+        window.addEventListener('pointerup', () => {
+            this.isDown = false;
+            if(this.path.length >= 3) this.resolve();
+            this.path = [];
+        });
+    },
+
+    addToPath(d) {
+        if(!this.path.length) { this.path.push(d); AudioFX.pop(); }
+        else {
+            const last = this.path[this.path.length-1];
+            const isNear = Math.abs(last.r-d.r) <=1 && Math.abs(last.c-d.c) <= 1;
+            if(isNear && d.color === last.color && !this.path.includes(d)) { this.path.push(d); AudioFX.pop(); }
+        }
+    },
+
+    resolve() {
+        this.score += this.path.length * 20;
+        document.getElementById('scoreValue').innerText = this.score;
+        this.path.forEach(d => {
+            for(let i=0; i<5; i++) this.particles.push({x:d.x, y:d.y, c:d.color, vx:(Math.random()-0.5)*8, vy:(Math.random()-0.5)*8, l:1});
+            this.dots = this.dots.filter(dot => dot !== d);
+        });
+        
+        // Gravity
+        for(let c=0; c<this.cols; c++) {
+            let col = this.dots.filter(d => d.c === c).sort((a,b)=>b.r - a.r);
+            col.forEach((d,i) => d.r = (this.rows-1)-i);
+            let m = this.rows - col.length;
+            for(let i=0; i<m; i++) this.spawn(m-1-i, c);
+        }
+
+        const goal = this.level * 600;
+        if(this.score >= goal) document.getElementById('screen-win').style.display = 'flex';
+    },
+
+    nextLevel() {
+        this.level++;
+        this.score = 0; // Reset score for new level challenge
+        document.getElementById('scoreValue').innerText = "0";
+        document.getElementById('lvl-tag').innerText = "LEVEL " + (this.level < 10 ? '0'+this.level : this.level);
+        document.getElementById('goal-box').innerText = "GOAL: " + (this.level * 600);
+        document.getElementById('screen-win').style.display = 'none';
+        this.generate();
+    },
+
+    loop() {
+        this.ctx.clearRect(0,0,this.width,this.height);
+        const cw = this.width/this.cols, ch = this.height/this.rows;
+        
+        if(this.path.length > 1) {
+            this.ctx.beginPath(); this.ctx.lineWidth = 12; this.ctx.strokeStyle = this.path[0].color;
+            this.ctx.globalAlpha = 0.2; this.ctx.moveTo(this.path[0].x, this.path[0].y);
+            this.path.forEach(p => this.ctx.lineTo(p.x, p.y)); this.ctx.stroke(); this.ctx.globalAlpha = 1;
+        }
+
+        this.dots.forEach(d => {
+            d.x += (d.c*cw + cw/2 - d.x)*0.15; d.y += (d.r*ch + ch/2 - d.y)*0.15;
+            this.ctx.shadowBlur = 10; this.ctx.shadowColor = d.color; this.ctx.fillStyle = d.color;
+            this.ctx.beginPath(); this.ctx.arc(d.x, d.y, 17+Math.sin(d.pulse+=0.05)*2, 0, 7); this.ctx.fill();
+            this.ctx.shadowBlur = 0;
+        });
+
+        this.particles.forEach((p,i) => {
+            p.x+=p.vx; p.y+=p.vy; this.ctx.globalAlpha = p.l-=0.02;
+            this.ctx.fillStyle = p.c; this.ctx.beginPath(); this.ctx.arc(p.x,p.y,2,0,7); this.ctx.fill();
+            if(p.l<=0) this.particles.splice(i,1);
+        });
+        this.ctx.globalAlpha = 1;
+        requestAnimationFrame(()=>this.loop());
+    }
+};
+window.addEventListener('resize', () => Game.resize());
+</script>
+</body>
+</html>
